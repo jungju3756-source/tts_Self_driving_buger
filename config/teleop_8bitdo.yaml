@@ -7,9 +7,15 @@
 #
 # 2026-08-05 실측 (이 로봇에 물린 8BitDo Micro):
 #     D-pad 상하 → axes[7]   (실측: 위를 눌렀을 때 scale 양수라야 전진)
-#     D-pad 좌우 → axes[6]   (왼쪽 = -1.0)
+#     D-pad 좌우 → axes[6]   (이 기록의 "왼쪽 = -1.0" 은 틀림 — 아래 2026-10-02 참고)
 #     axes[0~3] 은 항상 0 (아날로그 스틱 없음)
 #     axes[4],[5] 는 1.0 고정 (트리거 기본값)
+#
+# 2026-10-02 재실측 (라파1, D 모드, MAC E4:17:D8:E6:37:F9):
+#     위 +1 / 아래 -1 → axes[7],  좌우 → axes[6] (joy 표준: 왼쪽 = +1)
+#     R → buttons[7],  L → buttons[6]
+#     scale_angular 는 양수 (+yaw = 왼쪽 회전). 음수로 바꿨더니 좌우가 반대로 돌았음
+#     (IMU 로 +yaw = 반시계 확인, 로봇 뒤에서 보고 사용자 확인)
 #
 # 방향이 반대로 가면 해당 scale 의 부호를 뒤집으면 된다.
 
@@ -22,10 +28,11 @@ teleop_twist_joy_node:
     scale_linear:
       x: 0.20
     scale_linear_turbo:
-      x: 0.22
+      x: 0.26           # Waffle Pi 최고속도 0.26 m/s (Burger 0.22)
     scale_angular:
       yaw: 1.0
     scale_angular_turbo:
       yaw: 1.5
+    publish_stamped_twist: true    # Jazzy turtlebot3_node 는 /cmd_vel 을 TwistStamped 로 받음
     require_enable_button: false   # 데드맨 버튼 없이 D-pad 만으로 주행
     enable_turbo_button: 7         # R 버튼 (버튼 인덱스 — 축과 무관)
