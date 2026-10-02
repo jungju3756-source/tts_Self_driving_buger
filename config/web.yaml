@@ -1,0 +1,9 @@
+# 로봇 조작 웹 페이지 (web/server.py)
+port: 8443                     # https://<라파1 IP>:8443
+
+gemini:
+  # Live 모델 이름 — 키를 받으면 models 목록으로 실제 쓸 수 있는 이름을 확인해서 맞출 것
+  model: gemini-3.8-live
+  voice: Kore                  # 기본 제공 음성 이름
+  silence_ms: 600              # 말이 끝났다고 보는 침묵 길이 [ms]
+# API 키는 여기 두지 않는다 → ~/.config/robot_web/gemini_api_key (권한 600, git 밖)

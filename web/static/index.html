@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>터틀이 조종석</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --text: #1c1f24; --muted: #6b7280; --line: #e3e5e8;
+    --accent: #2563eb; --accent-soft: #dbe7ff; --danger: #dc2626; --ok: #16a34a; --warn: #d97706;
+    --wall: #e11d48; --plan: #16a34a; --robot: #2563eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111317; --panel: #1a1d23; --text: #e8eaed; --muted: #9aa0a8; --line: #2a2e35;
+      --accent: #5b8cff; --accent-soft: #1f2b47; --danger: #f05252; --ok: #34d399; --warn: #f59e0b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111317; --panel: #1a1d23; --text: #e8eaed; --muted: #9aa0a8; --line: #2a2e35;
+    --accent: #5b8cff; --accent-soft: #1f2b47; --danger: #f05252; --ok: #34d399; --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Noto Sans KR", "Malgun Gothic", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+           background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 17px; margin: 0; font-weight: 700; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); display: inline-block; }
+  .dot.on { background: var(--ok); }
+  .spacer { flex: 1; }
+  .chip { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  main { display: grid; grid-template-columns: 1fr 340px; gap: 12px; padding: 12px; height: calc(100vh - 52px); }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; height: auto; } #mapbox { height: 60vh; } }
+  #mapbox { position: relative; background: var(--panel); border: 1px solid var(--line);
+            border-radius: 10px; overflow: hidden; touch-action: none; }
+  canvas { width: 100%; height: 100%; display: block; }
+  .tools { position: absolute; top: 10px; left: 10px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 20px); }
+  .zoom { position: absolute; bottom: 10px; right: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .hint { position: absolute; bottom: 10px; left: 10px; font-size: 13px; color: var(--muted);
+          background: var(--panel); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); }
+  aside { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  section h2 { font-size: 13px; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+           padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  #stop { width: 100%; background: var(--danger); color: #fff; border: none; font-size: 18px;
+          font-weight: 700; padding: 14px; margin-top: 8px; }
+  .places { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+  .places button { padding: 12px 8px; font-weight: 600; }
+  .places button.target { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #navstate { font-size: 16px; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 13px; }
+  #mic { width: 100%; padding: 14px; font-size: 16px; font-weight: 700; margin: 8px 0; }
+  #mic.live { background: var(--danger); color: #fff; border-color: var(--danger); }
+  .row { display: flex; gap: 6px; align-items: center; }
+  .row input, select { flex: 1; font: inherit; padding: 8px; border-radius: 8px; border: 1px solid var(--line);
+                       background: var(--bg); color: var(--text); min-width: 0; }
+  .meter { height: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; margin-top: 6px; }
+  .meter div { height: 100%; width: 0; background: var(--ok); transition: width 60ms linear; }
+  #chat { max-height: 360px; min-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+  .msg { max-width: 88%; padding: 6px 10px; border-radius: 12px; font-size: 14px; word-break: break-word; }
+  .msg .tm { display: block; font-size: 11px; opacity: .7; margin-top: 2px; }
+  .msg.me { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.bot { align-self: flex-start; background: var(--bg); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .msg.sys { align-self: center; background: none; color: var(--muted); font-size: 12px; padding: 0 4px; }
+  .msg.live { opacity: .65; }
+  .metrics { align-self: center; font-size: 12px; color: var(--accent); background: var(--accent-soft);
+             padding: 3px 10px; border-radius: 10px; font-variant-numeric: tabular-nums; }
+  #log { font-size: 12px; color: var(--muted); max-height: 120px; overflow-y: auto; }
+  .warnbox { background: #fff4e5; color: #8a4b00; border-radius: 8px; padding: 8px; font-size: 13px; margin-bottom: 8px; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .warnbox { background: #3a2a10; color: #ffcf8a; } }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="conn" title="로봇 연결"></span>
+  <h1>터틀이 조종석</h1>
+  <span class="spacer"></span>
+  <span class="chip" id="batt">배터리 —</span>
+</header>
+
+<main>
+  <div id="mapbox">
+    <canvas id="map"></canvas>
+    <div class="tools">
+      <button data-mode="view" class="on">👆 보기·이동</button>
+      <button data-mode="wall">✏️ 벽 그리기</button>
+      <button data-mode="erase">🧽 벽 지우기</button>
+      <button data-mode="place">📍 장소 추가</button>
+      <button data-mode="pose">🧭 로봇 위치 지정</button>
+    </div>
+    <div class="zoom">
+      <button id="zin">＋</button><button id="zout">－</button><button id="zfit">⤢</button>
+    </div>
+    <div class="hint" id="hint">장소 핀을 누르면 그곳으로 갑니다 · 드래그로 지도 이동</div>
+  </div>
+
+  <aside>
+    <section>
+      <h2>로봇 상태</h2>
+      <div id="navstate">대기 중</div>
+      <div class="sub" id="navsub">—</div>
+      <button id="stop">■ 정지</button>
+    </section>
+
+    <section>
+      <h2>장소로 보내기</h2>
+      <div class="places" id="places"><span class="sub">장소 불러오는 중…</span></div>
+    </section>
+
+    <section>
+      <h2>음성 명령</h2>
+      <div id="securewarn" class="warnbox" hidden>이 주소에서는 브라우저가 마이크를 막습니다. https:// 로 접속해 주세요.</div>
+      <div class="row">
+        <select id="engine">
+          <option value="browser">브라우저 음성 (키 없이)</option>
+          <option value="gemini">Gemini Live</option>
+        </select>
+      </div>
+      <div id="keyrow" class="row" style="margin-top:6px" hidden>
+        <input id="keyin" type="password" placeholder="Gemini API 키 (AIza…)">
+        <button id="keysave">저장</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <select id="micsel" title="마이크"><option value="">기본 마이크</option></select>
+        <button id="mictest" title="마이크 소리 확인">🎚 테스트</button>
+      </div>
+      <div class="meter"><div id="lvl"></div></div>
+      <div class="sub" id="micnote"></div>
+      <button id="mic">🎤 말하기</button>
+      <div class="row">
+        <input id="textin" placeholder="글로 입력: 예) 3번으로 가줘">
+        <button id="textsend">보내기</button>
+      </div>
+      <div class="sub" id="voicestate">—</div>
+    </section>
+
+    <section>
+      <h2>대화 <span class="sub" style="font-weight:400">· 인식 = 말 끝 → 글자 나옴, 응답 = 말 끝 → 로봇 첫 소리</span></h2>
+      <div id="chat"></div>
+      <div class="row" style="margin-top:8px"><span class="sub" id="avg"></span><span class="spacer"></span>
+        <button id="chatclear">지우기</button></div>
+    </section>
+
+    <section>
+      <h2>벽</h2>
+      <div class="row"><span class="sub" id="wallcount">벽 0개</span><span class="spacer"></span>
+        <button id="wallclear">모두 지우기</button></div>
+    </section>
+
+    <section>
+      <h2>기록</h2>
+      <div id="log"></div>
+    </section>
+  </aside>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const S = { map: null, img: null, places: {}, walls: [], half: 0.2, pose: null, plan: [], nav: { state: "idle" },
+            mode: "view", scale: 60, cx: 0, cy: 0, fitted: false, drag: null };
+let ws;
+
+// ---------------------------------------------------------------- 연결
+function connect() {
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => { $("conn").classList.add("on"); log("서버 연결됨"); };
+  ws.onclose = () => { $("conn").classList.remove("on"); log("연결 끊김 — 다시 시도"); setTimeout(connect, 1500); };
+  ws.onmessage = (ev) => {
+    if (ev.data instanceof ArrayBuffer) { Voice.play(ev.data); return; }
+    const m = JSON.parse(ev.data);
+    (handlers[m.type] || (() => {}))(m);
+  };
+}
+function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+
+const handlers = {
+  hello(m) { S.geminiKey = m.gemini_key; updateKeyRow(); },
+  map(m) {
+    S.map = m;
+    const img = new Image();
+    img.onload = () => { S.img = img; if (!S.fitted) { fit(); S.fitted = true; } draw(); };
+    img.src = "/map.png?v=" + m.version;
+  },
+  places(m) { S.places = m.places; renderPlaces(); draw(); },
+  walls(m) { S.walls = m.walls; S.half = m.half_width; $("wallcount").textContent = `벽 ${m.walls.length}개`; draw(); },
+  pose(m) { S.pose = m; draw(); },
+  plan(m) { S.plan = m.points; draw(); },
+  battery(m) { $("batt").textContent = `🔋 ${m.percent}% · ${m.voltage}V`; },
+  nav(m) { S.nav = m; renderNav(); if (["arrived", "failed", "canceled"].includes(m.state)) { S.plan = []; draw(); Voice.onNavEnd(m); } },
+  log(m) { log(m.text); },
+  place_event(m) { log(m.ok ? `장소 ${m.cmd} ✓ ${m.name || ""}` : `장소 실패: ${m.error}`); },
+  wall_event(m) { if (!m.ok) log(`벽 실패: ${m.error}`); },
+  say_reply(m) { Voice.onReply(m); },
+  voice(m) { Voice.onEvent(m); },
+};
+
+// ---------------------------------------------------------------- 좌표 변환
+const cv = $("map"), ctx = cv.getContext("2d");
+function resize() {
+  const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  cv.width = r.width * d; cv.height = r.height * d; ctx.setTransform(d, 0, 0, d, 0, 0); draw();
+}
+const W = () => cv.getBoundingClientRect().width, H = () => cv.getBoundingClientRect().height;
+const toS = (x, y) => [W() / 2 + (x - S.cx) * S.scale, H() / 2 - (y - S.cy) * S.scale];
+const toW = (sx, sy) => [S.cx + (sx - W() / 2) / S.scale, S.cy - (sy - H() / 2) / S.scale];
+function fit() {
+  if (!S.map) return;
+  const m = S.map, w = m.width * m.resolution, h = m.height * m.resolution;
+  S.cx = m.ox + w / 2; S.cy = m.oy + h / 2; S.scale = Math.min(W() / w, H() / h) * 0.95; draw();
+}
+function zoom(f, sx = W() / 2, sy = H() / 2) {
+  const [wx, wy] = toW(sx, sy); S.scale = Math.max(8, Math.min(600, S.scale * f));
+  const [nx, ny] = toW(sx, sy); S.cx += wx - nx; S.cy += wy - ny; draw();
+}
+
+// ---------------------------------------------------------------- 그리기
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function draw() {
+  ctx.clearRect(0, 0, W(), H());
+  if (S.img && S.map) {
+    const m = S.map, [x0, y0] = toS(m.ox, m.oy + m.height * m.resolution);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(S.img, x0, y0, m.width * m.resolution * S.scale, m.height * m.resolution * S.scale);
+  }
+  // 벽: 금지 띠 + 선
+  for (const w of S.walls) drawWall(w.x1, w.y1, w.x2, w.y2, w.id === S.hoverWall);
+  if (S.drag && S.drag.kind === "wall") drawWall(S.drag.x1, S.drag.y1, S.drag.x2, S.drag.y2, true);
+  // 경로
+  if (S.plan.length > 1) {
+    ctx.strokeStyle = css("--plan"); ctx.lineWidth = 3; ctx.setLineDash([6, 4]); ctx.beginPath();
+    S.plan.forEach(([x, y], i) => { const [a, b] = toS(x, y); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); });
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+  // 장소
+  for (const [name, p] of Object.entries(S.places)) {
+    const [a, b] = toS(p.x, p.y), tgt = S.nav.target === name && ["moving", "sending"].includes(S.nav.state);
+    ctx.fillStyle = tgt ? css("--accent") : "#fff"; ctx.strokeStyle = css("--accent"); ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(a, b, 11, 0, 7); ctx.fill(); ctx.stroke();
+    if (p.yaw !== null && p.yaw !== undefined) {
+      ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(a + 20 * Math.cos(p.yaw), b - 20 * Math.sin(p.yaw)); ctx.stroke();
+    }
+    ctx.font = "600 13px system-ui, sans-serif"; ctx.textAlign = "center";
+    ctx.lineWidth = 4; ctx.strokeStyle = "#fff"; ctx.strokeText(name, a, b - 17);
+    ctx.fillStyle = "#1c1f24"; ctx.fillText(name, a, b - 17);
+  }
+  // 로봇
+  if (S.pose) {
+    const [a, b] = toS(S.pose.x, S.pose.y), r = Math.max(7, 0.15 * S.scale), y = S.pose.yaw;
+    ctx.fillStyle = css("--robot"); ctx.globalAlpha = 0.85;
+    ctx.beginPath(); ctx.arc(a, b, r, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(a, b);
+    ctx.lineTo(a + r * 1.4 * Math.cos(y), b - r * 1.4 * Math.sin(y)); ctx.stroke();
+  }
+  // 위치 지정 화살표
+  if (S.drag && S.drag.kind === "pose") {
+    const [a, b] = toS(S.drag.x, S.drag.y), [c, d] = toS(S.drag.x2, S.drag.y2);
+    ctx.strokeStyle = css("--warn"); ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke();
+    ctx.beginPath(); ctx.arc(a, b, 8, 0, 7); ctx.stroke();
+  }
+}
+function drawWall(x1, y1, x2, y2, hi) {
+  const [a, b] = toS(x1, y1), [c, d] = toS(x2, y2);
+  ctx.lineCap = "round";
+  ctx.strokeStyle = css("--wall"); ctx.globalAlpha = hi ? 0.35 : 0.18; ctx.lineWidth = 2 * S.half * S.scale;
+  ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke();
+  ctx.globalAlpha = 1; ctx.lineWidth = hi ? 5 : 3;
+  ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke(); ctx.lineCap = "butt";
+}
+
+// ---------------------------------------------------------------- 지도 조작
+const HINTS = {
+  view: "장소 핀을 누르면 그곳으로 갑니다 · 드래그로 지도 이동",
+  wall: "벽 시작점에서 끝점까지 드래그 — 로봇은 이 선을 넘지 않습니다",
+  erase: "지울 벽을 누르세요",
+  place: "장소로 만들 곳을 누르면 이름을 묻습니다",
+  pose: "로봇이 실제로 있는 곳을 누르고, 바라보는 방향으로 드래그",
+};
+document.querySelectorAll(".tools button").forEach((b) => b.onclick = () => setMode(b.dataset.mode));
+function setMode(m) {
+  S.mode = m; $("hint").textContent = HINTS[m];
+  document.querySelectorAll(".tools button").forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
+}
+function placeAt(sx, sy) {
+  for (const [name, p] of Object.entries(S.places)) {
+    const [a, b] = toS(p.x, p.y); if (Math.hypot(a - sx, b - sy) < 18) return name;
+  }
+  return null;
+}
+function wallAt(sx, sy) {
+  let best = null, bd = 14;
+  for (const w of S.walls) {
+    const [a, b] = toS(w.x1, w.y1), [c, d] = toS(w.x2, w.y2), dx = c - a, dy = d - b;
+    const t = Math.max(0, Math.min(1, ((sx - a) * dx + (sy - b) * dy) / (dx * dx + dy * dy || 1)));
+    const dd = Math.hypot(sx - (a + t * dx), sy - (b + t * dy)); if (dd < bd) { bd = dd; best = w.id; }
+  }
+  return best;
+}
+const pt = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+cv.addEventListener("pointerdown", (e) => {
+  cv.setPointerCapture(e.pointerId);
+  const [sx, sy] = pt(e), [wx, wy] = toW(sx, sy);
+  if (S.mode === "view") {
+    const name = placeAt(sx, sy);
+    if (name) { goto(name); return; }
+    S.drag = { kind: "pan", sx, sy, cx: S.cx, cy: S.cy };
+  } else if (S.mode === "wall") S.drag = { kind: "wall", x1: wx, y1: wy, x2: wx, y2: wy };
+  else if (S.mode === "pose") S.drag = { kind: "pose", x: wx, y: wy, x2: wx, y2: wy };
+  else if (S.mode === "erase") { const id = wallAt(sx, sy); if (id) send({ cmd: "wall_delete", id }); }
+  else if (S.mode === "place") {
+    const name = (prompt("장소 이름 (띄어쓰기 없이, 예: 정수기)") || "").trim();
+    if (name) send({ cmd: "place_add", x: wx, y: wy, name });
+  }
+});
+cv.addEventListener("pointermove", (e) => {
+  const [sx, sy] = pt(e), [wx, wy] = toW(sx, sy);
+  if (S.mode === "erase") { const h = wallAt(sx, sy); if (h !== S.hoverWall) { S.hoverWall = h; draw(); } }
+  if (!S.drag) return;
+  if (S.drag.kind === "pan") { S.cx = S.drag.cx - (sx - S.drag.sx) / S.scale; S.cy = S.drag.cy + (sy - S.drag.sy) / S.scale; }
+  else { S.drag.x2 = wx; S.drag.y2 = wy; }
+  draw();
+});
+cv.addEventListener("pointerup", () => {
+  const d = S.drag; S.drag = null;
+  if (!d) return;
+  if (d.kind === "wall") {
+    if (Math.hypot(d.x2 - d.x1, d.y2 - d.y1) >= 0.05) send({ cmd: "wall_add", x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2 });
+  } else if (d.kind === "pose") {
+    const yaw = Math.hypot(d.x2 - d.x, d.y2 - d.y) > 0.05 ? Math.atan2(d.y2 - d.y, d.x2 - d.x) : (S.pose ? S.pose.yaw : 0);
+    send({ cmd: "initial_pose", x: d.x, y: d.y, yaw }); setMode("view");
+  }
+  draw();
+});
+cv.addEventListener("wheel", (e) => { e.preventDefault(); const [sx, sy] = pt(e); zoom(e.deltaY < 0 ? 1.15 : 1 / 1.15, sx, sy); }, { passive: false });
+$("zin").onclick = () => zoom(1.25); $("zout").onclick = () => zoom(0.8); $("zfit").onclick = fit;
+$("wallclear").onclick = () => { if (S.walls.length && confirm(`벽 ${S.walls.length}개를 모두 지울까요?`)) send({ cmd: "wall_clear" }); };
+
+// ---------------------------------------------------------------- 장소 · 상태
+function goto(name) { send({ cmd: "goto", name }); log(`→ ${name} 이동 요청`); }
+function stop(why) { send({ cmd: "stop", why }); }
+$("stop").onclick = () => stop("정지 버튼");
+const natural = (a, b) => a.localeCompare(b, "ko", { numeric: true });
+function renderPlaces() {
+  const box = $("places"), names = Object.keys(S.places).sort(natural);
+  box.innerHTML = names.length ? "" : '<span class="sub">장소가 없습니다 — 지도에서 📍 장소 추가</span>';
+  for (const n of names) {
+    const b = document.createElement("button"); b.textContent = n; b.onclick = () => goto(n);
+    b.classList.toggle("target", S.nav.target === n && ["moving", "sending"].includes(S.nav.state));
+    box.appendChild(b);
+  }
+}
+const NAVTXT = { idle: "대기 중", sending: "출발 준비", moving: "이동 중", arrived: "도착", failed: "실패", canceled: "멈춤" };
+function renderNav() {
+  const m = S.nav;
+  $("navstate").textContent = (NAVTXT[m.state] || m.state) + (m.target ? ` · ${m.target}` : "");
+  let sub = "—";
+  if (m.state === "moving" && m.remaining != null) sub = `남은 거리 ${m.remaining.toFixed(1)} m`;
+  if (m.state === "arrived") sub = `${m.took ?? "?"}초 · 도착 오차 ${m.error_m != null ? (m.error_m * 100).toFixed(0) + " cm" : "?"}`;
+  if (["failed", "canceled"].includes(m.state)) sub = m.reason || "—";
+  $("navsub").textContent = sub; renderPlaces(); draw();
+}
+
+// ---------------------------------------------------------------- 대화창
+const now = () => performance.now();
+const hhmmss = () => new Date().toLocaleTimeString("ko-KR", { hour12: false });
+const Chat = {
+  box: $("chat"), stats: [],
+  near() { return this.box.scrollHeight - this.box.scrollTop - this.box.clientHeight < 60; },
+  add(role, text) {
+    const stick = this.near(), d = document.createElement("div");
+    d.className = "msg " + role;
+    d.innerHTML = '<span class="tx"></span><span class="tm"></span>';
+    d.querySelector(".tx").textContent = text; d.querySelector(".tm").textContent = hhmmss();
+    this.box.appendChild(d); if (stick) this.box.scrollTop = this.box.scrollHeight;
+    return d;
+  },
+  append(el, text) { const stick = this.near(); el.querySelector(".tx").textContent += text; if (stick) this.box.scrollTop = this.box.scrollHeight; },
+  set(el, text) { el.querySelector(".tx").textContent = text; },
+  metrics(m) {   // m: {recog, first, tool} 초 단위 (없으면 생략)
+    const parts = [];
+    if (m.recog != null) parts.push(`🎙 인식 ${m.recog.toFixed(2)}초`);
+    if (m.tool != null) parts.push(`⚙ 판단 ${m.tool.toFixed(2)}초`);
+    if (m.first != null) parts.push(`🔊 응답 ${m.first.toFixed(2)}초`);
+    if (!parts.length) return;
+    const d = document.createElement("div"); d.className = "metrics"; d.textContent = parts.join("  ·  ");
+    const stick = this.near(); this.box.appendChild(d); if (stick) this.box.scrollTop = this.box.scrollHeight;
+    if (m.first != null) {
+      this.stats.push(m.first);
+      const a = this.stats.reduce((x, y) => x + y, 0) / this.stats.length, mx = Math.max(...this.stats);
+      const ok = this.stats.filter((x) => x <= 3).length;
+      $("avg").textContent = `응답 평균 ${a.toFixed(2)}초 · 최대 ${mx.toFixed(2)}초 · 3초 이내 ${ok}/${this.stats.length}`;
+    }
+  },
+};
+$("chatclear").onclick = () => { Chat.box.innerHTML = ""; Chat.stats = []; $("avg").textContent = ""; };
+
+// ---------------------------------------------------------------- 마이크 선택 · 레벨
+const Mic = {
+  sel: $("micsel"),
+  get id() { return this.sel.value || undefined; },
+  async list() {
+    if (!navigator.mediaDevices) return;
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audioinput");
+    let saved = null; try { saved = localStorage.getItem("micId"); } catch (e) {}
+    const cur = this.sel.value || saved || "";
+    this.sel.innerHTML = '<option value="">기본 마이크</option>';
+    devs.forEach((d, i) => {
+      if (d.deviceId === "default" || d.deviceId === "communications") return;
+      const o = document.createElement("option"); o.value = d.deviceId; o.textContent = d.label || `마이크 ${i + 1}`;
+      this.sel.appendChild(o);
+    });
+    if ([...this.sel.options].some((o) => o.value === cur)) this.sel.value = cur;
+    $("micnote").textContent = devs.some((d) => d.label) ? "" : "🎚 테스트를 한 번 누르면 마이크 이름이 보여요";
+  },
+  constraints() {
+    return { audio: { deviceId: this.id ? { exact: this.id } : undefined, channelCount: 1,
+                      echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
+  },
+  level(rms) { $("lvl").style.width = Math.min(100, rms * 400) + "%"; },
+  // 테스트: 고른 마이크를 열어 레벨만 보여 줌
+  test: null,
+  async toggleTest() {
+    if (this.test) { this.test.stream.getTracks().forEach((t) => t.stop()); this.test.ctx.close(); clearInterval(this.test.iv);
+                     this.test = null; $("mictest").classList.remove("on"); this.level(0); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(this.constraints());
+      const ctx = new AudioContext(), an = ctx.createAnalyser(); an.fftSize = 1024;
+      ctx.createMediaStreamSource(stream).connect(an);
+      const a = new Float32Array(an.fftSize);
+      const iv = setInterval(() => { an.getFloatTimeDomainData(a); let s = 0; for (const v of a) s += v * v; this.level(Math.sqrt(s / a.length)); }, 60);
+      this.test = { stream, ctx, iv }; $("mictest").classList.add("on");
+      $("micnote").textContent = "🎤 " + (stream.getAudioTracks()[0].label || "마이크") + " — 말하면 초록 막대가 움직여야 해요";
+      this.list();
+    } catch (e) { $("micnote").textContent = "마이크를 열 수 없어요: " + e.message; }
+  },
+};
+Mic.sel.onchange = () => {
+  try { localStorage.setItem("micId", Mic.sel.value); } catch (e) {}
+  if (Mic.test) { Mic.toggleTest().then(() => Mic.toggleTest()); }
+  if (Voice.on && Voice.engine === "gemini") { Voice.stopAll(); Voice.start(); }
+  if (Voice.engine === "browser") $("micnote").textContent = "※ 브라우저 음성 모드는 Chrome 기본 마이크를 씁니다 (아래 안내)";
+};
+$("mictest").onclick = () => Mic.toggleTest();
+if (navigator.mediaDevices) { navigator.mediaDevices.addEventListener("devicechange", () => Mic.list()); Mic.list(); }
+
+// ---------------------------------------------------------------- 음성
+const STOP_RE = /(멈춰|멈춤|멈추|정지|스톱|스탑|그만)/;
+const Voice = {
+  engine: "browser", on: false, rec: null, speaking: false,
+  inCtx: null, stream: null, node: null, outCtx: null, nextT: 0, sources: [], wasPlaying: false, buf: [],
+  turn: null,              // 지금 대화 한 턴의 시각 기록
+  vad: { talking: false, last: 0, nf: 0.005 },
+
+  state(t) { $("voicestate").textContent = t; },
+  newTurn() { this.turn = { speechEnd: null, tInput: null, tTool: null, tFirst: null, me: null, bot: null, done: false }; return this.turn; },
+  curTurn() { return (this.turn && !this.turn.done) ? this.turn : this.newTurn(); },
+  sec(t, base) { return (t != null && base != null) ? Math.max(0, (t - base) / 1000) : null; },
+
+  toggle() { this.on ? this.stopAll() : this.start(); },
+  async start() {
+    if (!window.isSecureContext) { $("securewarn").hidden = false; return; }
+    if (Mic.test) await Mic.toggleTest();
+    this.on = true; $("mic").classList.add("live"); $("mic").textContent = "■ 듣기 끄기";
+    if (this.engine === "browser") this.startBrowser(); else await this.startGemini();
+  },
+  stopAll() {
+    this.on = false; $("mic").classList.remove("live"); $("mic").textContent = "🎤 말하기";
+    if (this.rec) { try { this.rec.abort(); } catch (e) {} this.rec = null; }
+    if (this.engine === "gemini") { send({ cmd: "voice_stop" }); this.stopMic(); this.flush(); }
+    Mic.level(0); this.state("꺼짐");
+  },
+
+  // --- 브라우저 음성 인식 (Chrome) + 규칙 해석 + 브라우저 TTS
+  startBrowser() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { this.state("이 브라우저는 음성 인식을 지원하지 않아요 (Chrome 사용)"); this.stopAll(); return; }
+    const r = new SR(); this.rec = r;
+    r.lang = "ko-KR"; r.interimResults = true; r.continuous = false;
+    r.onstart = () => this.state("듣는 중… 말해 보세요");
+    r.onspeechstart = () => { this.newTurn(); };
+    r.onspeechend = () => { if (this.turn) this.turn.speechEnd = now(); };
+    r.onresult = (e) => {
+      const res = e.results[e.results.length - 1], text = res[0].transcript, tr = this.curTurn();
+      if (STOP_RE.test(text)) { stop("음성 정지"); }           // 끝까지 안 기다리고 바로
+      if (!tr.me) tr.me = Chat.add("me live", text); else Chat.set(tr.me, text);
+      if (res.isFinal) {
+        tr.me.classList.remove("live"); tr.tInput = now(); if (tr.speechEnd == null) tr.speechEnd = tr.tInput;
+        send({ cmd: "say", text });
+      }
+    };
+    r.onerror = (e) => { if (e.error !== "no-speech" && e.error !== "aborted") this.state("음성 인식 오류: " + e.error); };
+    r.onend = () => { this.rec = null; if (this.on && !this.speaking) setTimeout(() => this.on && !this.rec && this.startBrowser(), 250); };
+    try { r.start(); } catch (e) {}
+  },
+  speak(text, tr) {
+    if (!text) return;
+    Chat.add("bot", text);
+    if (!("speechSynthesis" in window)) { this.finishTurn(tr); return; }
+    const u = new SpeechSynthesisUtterance(text); u.lang = "ko-KR"; u.rate = 1.05;
+    const ko = speechSynthesis.getVoices().find((v) => v.lang.startsWith("ko")); if (ko) u.voice = ko;
+    this.speaking = true; if (this.rec) { try { this.rec.abort(); } catch (e) {} }   // 내 목소리를 다시 듣지 않게
+    u.onstart = () => { if (tr) { tr.tFirst = now(); this.finishTurn(tr); } };
+    u.onend = u.onerror = () => { this.speaking = false; if (this.on && this.engine === "browser" && !this.rec) this.startBrowser(); };
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  },
+  finishTurn(tr) {
+    if (!tr || tr.done) return;
+    tr.done = true;
+    Chat.metrics({ recog: this.sec(tr.tInput, tr.speechEnd), tool: this.sec(tr.tTool, tr.speechEnd), first: this.sec(tr.tFirst, tr.speechEnd) });
+  },
+  onReply(m) {
+    const tr = (this.turn && !this.turn.done && this.turn.tInput) ? this.turn : null;
+    if (tr) tr.tTool = now();                           // 서버 해석 결과가 돌아온 시각
+    if (this.engine === "browser" && this.on) this.speak(m.text, tr);
+    else { Chat.add("bot", m.text); }
+    if (m.action === "go") this.lastVoiceGoal = m.place;
+  },
+  onNavEnd(m) {
+    if (this.engine !== "browser" || !this.on || this.lastVoiceGoal !== m.target) return;
+    this.lastVoiceGoal = null;
+    this.speak({ arrived: `${m.target}에 도착했어요.`, failed: `${m.target}(으)로 가지 못했어요.`, canceled: "멈췄어요." }[m.state]);
+  },
+
+  // --- Gemini Live: 고른 마이크 16k PCM → 서버 → Gemini, 응답 24k PCM 재생
+  async startGemini() {
+    this.state("Gemini 연결 중…");
+    try { this.stream = await navigator.mediaDevices.getUserMedia(Mic.constraints()); }
+    catch (e) { this.state("마이크를 열 수 없어요: " + e.message); this.stopAll(); return; }
+    Mic.list();
+    $("micnote").textContent = "🎤 " + (this.stream.getAudioTracks()[0].label || "마이크");
+    this.inCtx = new AudioContext();
+    const src = this.inCtx.createMediaStreamSource(this.stream);
+    const code = `class P extends AudioWorkletProcessor { process(i) { if (i[0][0]) this.port.postMessage(i[0][0]); return true; } }
+                  registerProcessor("cap", P);`;
+    await this.inCtx.audioWorklet.addModule(URL.createObjectURL(new Blob([code], { type: "application/javascript" })));
+    this.node = new AudioWorkletNode(this.inCtx, "cap");
+    const ratio = this.inCtx.sampleRate / 16000; let acc = 0, accN = 0, pos = 0;
+    this.node.port.onmessage = (e) => {
+      // 레벨 · 말 끝 감지 (로봇이 말하는 중엔 무시)
+      let s2 = 0; for (const s of e.data) s2 += s * s; const rms = Math.sqrt(s2 / e.data.length);
+      Mic.level(rms); this.vadStep(rms);
+      // 다운샘플 (구간 평균) → Int16 100ms 묶음
+      for (const s of e.data) {
+        acc += s; accN++; pos++;
+        if (pos >= ratio) { pos -= ratio; this.buf.push(Math.max(-1, Math.min(1, acc / accN))); acc = 0; accN = 0; }
+      }
+      if (this.buf.length >= 1600) {
+        const chunk = this.buf.splice(0, 1600);
+        if (this.playing()) return;                     // 로봇이 말하는 동안은 안 보냄 (half-duplex)
+        const pcm = new Int16Array(chunk.length);
+        for (let i = 0; i < chunk.length; i++) pcm[i] = chunk[i] * 32767;
+        if (ws.readyState === 1) ws.send(pcm.buffer);
+      }
+    };
+    src.connect(this.node);
+    this.outCtx = new AudioContext({ sampleRate: 24000 });
+    send({ cmd: "voice_start" });
+  },
+  vadStep(rms) {
+    const v = this.vad, t = now();
+    if (this.playing()) { v.talking = false; return; }
+    const thr = Math.max(0.012, v.nf * 3);
+    if (rms > thr) {
+      if (!v.talking) { v.talking = true; if (!this.turn || this.turn.done || this.turn.tFirst) this.newTurn(); }
+      v.last = t;
+    } else {
+      v.nf = v.nf * 0.98 + rms * 0.02;                  // 조용할 때 잡음 수준 학습
+      if (v.talking && t - v.last > 300) { v.talking = false; if (this.turn && !this.turn.done) this.turn.speechEnd = v.last; }
+    }
+  },
+  stopMic() {
+    if (this.stream) this.stream.getTracks().forEach((t) => t.stop());
+    if (this.inCtx) this.inCtx.close(); this.stream = this.inCtx = this.node = null; this.buf = [];
+  },
+  playing() { return this.outCtx && this.outCtx.currentTime < this.nextT - 0.05; },
+  play(ab) {
+    if (!this.outCtx) return;
+    if (this.turn && !this.turn.done && this.turn.tFirst == null) this.turn.tFirst = now();
+    const i16 = new Int16Array(ab), f = new Float32Array(i16.length);
+    for (let i = 0; i < i16.length; i++) f[i] = i16[i] / 32768;
+    const b = this.outCtx.createBuffer(1, f.length, 24000); b.copyToChannel(f, 0);
+    const s = this.outCtx.createBufferSource(); s.buffer = b; s.connect(this.outCtx.destination);
+    this.nextT = Math.max(this.nextT, this.outCtx.currentTime + 0.03); s.start(this.nextT); this.nextT += b.duration;
+    this.sources.push(s); s.onended = () => { this.sources = this.sources.filter((x) => x !== s); };
+  },
+  flush() { this.sources.forEach((s) => { try { s.stop(); } catch (e) {} }); this.sources = []; if (this.outCtx) this.nextT = this.outCtx.currentTime; },
+  onEvent(m) {
+    const e = m.event;
+    if (e === "ready") this.state("Gemini 연결됨 · 말해 보세요");
+    else if (e === "input_text") {
+      const tr = this.curTurn(); tr.tInput = now();
+      if (!tr.me) tr.me = Chat.add("me", m.text); else Chat.append(tr.me, m.text);
+    } else if (e === "output_text") {
+      const tr = this.curTurn();
+      if (!tr.bot) tr.bot = Chat.add("bot", m.text); else Chat.append(tr.bot, m.text);
+    } else if (e === "turn_complete") {
+      if (this.turn && this.turn.tFirst != null) this.finishTurn(this.turn);   // 도구 턴의 종료는 건너뜀
+    } else if (e === "interrupted") this.flush();
+    else if (e === "tool_call") {
+      const tr = this.curTurn(); if (tr.tTool == null) tr.tTool = now();
+      Chat.add("sys", `⚙ ${m.name}(${Object.values(m.args || {}).join(", ")})`);
+    } else if (e === "dispatch") Chat.add("sys", `🚀 ${m.destination} 출발 (${m.why})`);
+    else if (e === "error") { this.state(m.text); Chat.add("sys", m.text); }
+    else if (e === "closed" && this.on && this.engine === "gemini") { this.state("Gemini 세션 끝남"); this.stopAll(); }
+  },
+};
+setInterval(() => {      // 안내 멘트 재생이 끝나면 서버에 알림 → 그때 출발
+  const p = Voice.playing();
+  if (Voice.wasPlaying && !p) send({ cmd: "playback_idle" });
+  Voice.wasPlaying = p;
+}, 100);
+
+$("mic").onclick = () => Voice.toggle();
+$("engine").onchange = (e) => { if (Voice.on) Voice.stopAll(); Voice.engine = e.target.value; updateKeyRow(); engineNote(); };
+function engineNote() {
+  $("micnote").textContent = Voice.engine === "browser"
+    ? "※ 브라우저 음성 모드는 위 선택과 상관없이 Chrome 기본 마이크를 씁니다 → 웹캠 마이크를 쓰려면 Gemini Live 를 고르거나 Chrome 설정에서 기본 마이크를 바꾸세요"
+    : "";
+}
+function updateKeyRow() { $("keyrow").hidden = !(Voice.engine === "gemini" && !S.geminiKey); }
+$("keysave").onclick = async () => {
+  const key = $("keyin").value.trim(); if (!key) return;
+  const r = await fetch("/api/gemini_key", { method: "POST", body: JSON.stringify({ key }) });
+  if (r.ok) { S.geminiKey = true; $("keyin").value = ""; updateKeyRow(); log("Gemini 키 저장됨"); } else log("키 저장 실패: " + r.status);
+};
+function sendText() {
+  const t = $("textin").value.trim(); if (!t) return; $("textin").value = "";
+  Chat.add("me", t); if (STOP_RE.test(t)) stop("글 정지"); send({ cmd: "say", text: t });
+}
+$("textsend").onclick = sendText; $("textin").onkeydown = (e) => { if (e.key === "Enter") sendText(); };
+document.addEventListener("keydown", (e) => { if (e.code === "Space" && e.target === document.body) { e.preventDefault(); stop("스페이스 키"); } });
+
+function log(t) { const d = document.createElement("div"); d.textContent = new Date().toLocaleTimeString("ko-KR") + "  " + t; $("log").prepend(d); }
+if (!window.isSecureContext) $("securewarn").hidden = false;
+new ResizeObserver(resize).observe($("mapbox"));
+connect();
+</script>
+</body>
+</html>

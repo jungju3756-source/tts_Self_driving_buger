@@ -12,6 +12,8 @@ nav.launch.py  —  라파1 캡스톤 주행 한 번에 (지도 작성 이후 �
     pad_gate.py          /cmd_vel_joy → /cmd_vel (누를 때만 — Nav2 와 안 싸우게)
     place_manager.py     장소 저장·마커, 패드 A(버튼 0) 1초 → 현재 위치 저장
     pose_keeper.py       마지막 위치 기억 → 다음 실행 때 AMCL 초기 위치로 자동 입력
+    wall_manager.py      웹에서 그린 가상 벽 → Nav2 Keepout 마스크
+    web/server.py        조작 웹 페이지 https://<라파1 IP>:8443  (web:=false 면 안 띄움)
 
 패드(/dev/input/event*)는 input 그룹 권한이 필요하다 (jungju 는 2026-10-02 추가됨, 재로그인 후 적용).
 로봇을 껐던 자리가 아닌 곳에서 켰으면 RViz '2D Pose Estimate' 로 위치를 다시 찍을 것.
@@ -22,6 +24,7 @@ import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -50,7 +53,13 @@ def generate_launch_description():
 
     keeper = ExecuteProcess(cmd=['python3', os.path.join(HERE, 'pose_keeper.py')], output='screen')
 
+    walls = ExecuteProcess(cmd=['python3', os.path.join(HERE, 'wall_manager.py')], output='screen')
+
+    web = ExecuteProcess(cmd=['python3', os.path.join(ROOT, 'web', 'server.py')], cwd=os.path.join(ROOT, 'web'),
+                         output='screen', condition=IfCondition(LaunchConfiguration('web')))
+
     return LaunchDescription([
+        DeclareLaunchArgument('web', default_value='true'),
         DeclareLaunchArgument('map', default_value=os.path.expanduser('~/maps/lab_v2.yaml')),
         localize,
         joy,
@@ -58,4 +67,6 @@ def generate_launch_description():
         gate,
         places,
         keeper,
+        walls,
+        web,
     ])

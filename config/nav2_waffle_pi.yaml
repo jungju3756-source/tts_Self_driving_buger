@@ -1,6 +1,7 @@
 # 라파1 Nav2 설정 — turtlebot3_navigation2/param/waffle_pi.yaml 복사본 (2026-10-02)
 # 바꾼 것: robot_radius 0.15→0.22 (Waffle Pi 281x306mm 외접원), max_vel_x 0.3→0.26 (실제 최고속도),
 #         xy_goal_tolerance 0.25→0.12 (RFP 도달 오차 ±0.25m 를 여유 있게 맞추려고)
+#         local/global costmap 에 keepout_filter (가상 벽)
 amcl:
   ros__parameters:
     alpha1: 0.2
@@ -176,6 +177,12 @@ local_costmap:
       resolution: 0.05
       robot_radius: 0.22
       plugins: ["obstacle_layer", "voxel_layer", "inflation_layer"]
+      # 웹 페이지에서 그린 가상 벽 (rapa1/wall_manager.py 가 마스크 발행)
+      filters: ["keepout_filter"]
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: True
+        filter_info_topic: "/costmap_filter_info"
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         inflation_radius: 0.5
@@ -226,6 +233,12 @@ global_costmap:
       resolution: 0.05
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "voxel_layer", "inflation_layer"]
+      # 웹 페이지에서 그린 가상 벽 (rapa1/wall_manager.py 가 마스크 발행)
+      filters: ["keepout_filter"]
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: True
+        filter_info_topic: "/costmap_filter_info"
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
