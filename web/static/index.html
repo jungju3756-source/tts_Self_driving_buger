@@ -71,6 +71,21 @@
   .msg.live { opacity: .65; }
   .metrics { align-self: center; font-size: 12px; color: var(--accent); background: var(--accent-soft);
              padding: 3px 10px; border-radius: 10px; font-variant-numeric: tabular-nums; }
+  /* 패드 B 말하기 (rapa1/voice_ptt.py) */
+  #padrec { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
+            padding: 10px 18px; border-radius: 999px; font-size: 16px; font-weight: 700; color: #fff;
+            background: var(--danger); box-shadow: 0 2px 12px rgba(0,0,0,.25); pointer-events: none; }
+  #padrec[hidden] { display: none; }
+  #padrec.proc { background: var(--accent); }
+  #padrec .rd { width: 12px; height: 12px; border-radius: 50%; background: #fff; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  .padstate { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; margin-bottom: 8px;
+              border: 1px solid var(--line); background: var(--bg); font-size: 14px; }
+  .padstate .key { font-weight: 700; border: 2px solid var(--line); border-radius: 50%; width: 26px; height: 26px;
+                   display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+  .padstate.rec { border-color: var(--danger); color: var(--danger); font-weight: 700; }
+  .padstate.rec .key { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .padstate.proc { border-color: var(--accent); color: var(--accent); }
   #log { font-size: 12px; color: var(--muted); max-height: 120px; overflow-y: auto; }
   .warnbox { background: #fff4e5; color: #8a4b00; border-radius: 8px; padding: 8px; font-size: 13px; margin-bottom: 8px; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .warnbox { background: #3a2a10; color: #ffcf8a; } }
@@ -97,6 +112,7 @@
     <div class="zoom">
       <button id="zin">＋</button><button id="zout">－</button><button id="zfit">⤢</button>
     </div>
+    <div id="padrec" hidden><span class="rd"></span><span id="padrectx">듣는 중… (패드 B)</span></div>
     <div class="hint" id="hint">장소 핀을 누르면 그곳으로 갑니다 · 드래그로 지도 이동</div>
   </div>
 
@@ -115,6 +131,7 @@
 
     <section>
       <h2>음성 명령</h2>
+      <div class="padstate" id="padstate"><span class="key">B</span><span id="padstatetx">패드 B 를 누른 채 말하세요</span></div>
       <div id="securewarn" class="warnbox" hidden>이 주소에서는 브라우저가 마이크를 막습니다. https:// 로 접속해 주세요.</div>
       <div class="row">
         <select id="engine">
@@ -197,6 +214,7 @@ const handlers = {
   nav(m) { S.nav = m; renderNav(); if (["arrived", "failed", "canceled"].includes(m.state)) { S.plan = []; draw(); Voice.onNavEnd(m); } },
   log(m) { log(m.text); },
   place_event(m) { log(m.ok ? `장소 ${m.cmd} ✓ ${m.name || ""}` : `장소 실패: ${m.error}`); },
+  pad_voice(m) { PadVoice.on(m); },
   wall_event(m) { if (!m.ok) log(`벽 실패: ${m.error}`); },
   say_reply(m) { Voice.onReply(m); },
   voice(m) { Voice.onEvent(m); },
@@ -370,6 +388,45 @@ function renderNav() {
 // ---------------------------------------------------------------- 대화창
 const now = () => performance.now();
 const hhmmss = () => new Date().toLocaleTimeString("ko-KR", { hour12: false });
+// 패드 B 누르고 말하기 — rapa1/voice_ptt.py 가 /voice/event 로 보내는 상태를 표시
+const PadVoice = {
+  bubble: null, t0: 0,
+  show(state, text) {
+    $("padstate").className = "padstate" + (state ? " " + state : "");
+    $("padstatetx").textContent = text;
+    $("padrec").hidden = !state;
+    $("padrec").className = state === "proc" ? "proc" : "";
+    $("padrectx").textContent = state === "proc" ? "알아듣는 중…" : "듣는 중… (패드 B)";
+  },
+  idle() { this.show("", "패드 B 를 누른 채 말하세요"); },
+  on(m) {
+    const NAV = { moving: "출발", arrived: "도착 ✓", failed: "이동 실패 ✗", canceled: "취소됨" };
+    if (m.state === "recording") {
+      this.t0 = Date.now(); this.show("rec", "● 듣는 중 — 말 끝나면 B 를 떼세요");
+      this.bubble = Chat.add("me live", "🎮 듣는 중…");
+    } else if (m.state === "processing") {
+      this.show("proc", `알아듣는 중… (${m.sec}초 녹음)`);
+      if (this.bubble) Chat.set(this.bubble, "🎮 …");
+    } else if (m.state === "result") {
+      this.idle();
+      const b = this.bubble || Chat.add("me", ""); this.bubble = null;
+      b.classList.remove("live"); Chat.set(b, "🎮 " + (m.text || "(말소리 없음)"));
+      if (m.reply) Chat.add("bot", m.reply);
+      Chat.metrics({ recog: m.stt_s });
+      log(`패드 음성: "${m.text}" → ${m.action}${m.place ? " " + m.place : ""} (${m.stt_s}초)`);
+    } else if (m.state === "error") {
+      this.idle();
+      if (this.bubble) { this.bubble.remove(); this.bubble = null; }
+      Chat.add("sys", "⚠ " + m.error); log("패드 음성 " + m.error);
+    } else if (m.state === "idle") {
+      this.idle();
+      if (this.bubble) { this.bubble.remove(); this.bubble = null; }
+    } else if (m.state === "nav") {
+      Chat.add("sys", `${m.place} ${NAV[m.nav] || m.nav}`);
+    }
+  },
+};
+
 const Chat = {
   box: $("chat"), stats: [],
   near() { return this.box.scrollHeight - this.box.scrollTop - this.box.clientHeight < 60; },

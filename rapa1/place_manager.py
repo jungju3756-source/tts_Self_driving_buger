@@ -143,7 +143,7 @@ class PlaceManager(Node):
             while f'{n}번' in self.places:
                 n += 1
             res = self._exec('here', [f'{n}번'])
-            self._beep(Sound.Request.BUTTON1 if res['ok'] else Sound.Request.ERROR)
+            self._beep(4 if res['ok'] else 3)   # Sound BUTTON1 / ERROR (상수는 .srv 주석에만 있음)
 
     def _beep(self, value):
         if self.sound and self.sound.service_is_ready():

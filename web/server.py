@@ -114,6 +114,8 @@ class RobotNode(Node):
             {'type': 'place_event', **json.loads(m.data)}), 10)
         self.create_subscription(String, '/walls/event', lambda m: self.emit(
             {'type': 'wall_event', **json.loads(m.data)}), 10)
+        self.create_subscription(String, '/voice/event', lambda m: self.emit(       # rapa1/voice_ptt.py (패드 B)
+            {'type': 'pad_voice', **json.loads(m.data)}), 10)
         self.create_subscription(Path, '/plan', self._plan, 10)
         self.create_subscription(BatteryState, '/battery_state', self._battery, 10)
 
