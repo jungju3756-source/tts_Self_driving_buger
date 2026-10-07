@@ -71,7 +71,7 @@
   .msg.live { opacity: .65; }
   .metrics { align-self: center; font-size: 12px; color: var(--accent); background: var(--accent-soft);
              padding: 3px 10px; border-radius: 10px; font-variant-numeric: tabular-nums; }
-  /* 패드 B 말하기 (rapa1/voice_ptt.py) */
+  /* 라파 마이크 상시 듣기 · 패드 B 말하기 (rapa1/voice_ptt.py) */
   #padrec { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
             padding: 10px 18px; border-radius: 999px; font-size: 16px; font-weight: 700; color: #fff;
             background: var(--danger); box-shadow: 0 2px 12px rgba(0,0,0,.25); pointer-events: none; }
@@ -86,6 +86,8 @@
   .padstate.rec { border-color: var(--danger); color: var(--danger); font-weight: 700; }
   .padstate.rec .key { background: var(--danger); border-color: var(--danger); color: #fff; }
   .padstate.proc { border-color: var(--accent); color: var(--accent); }
+  .padstate.listen { border-color: var(--accent); }
+  #log .muted { color: var(--muted); }
   #log { font-size: 12px; color: var(--muted); max-height: 120px; overflow-y: auto; }
   .warnbox { background: #fff4e5; color: #8a4b00; border-radius: 8px; padding: 8px; font-size: 13px; margin-bottom: 8px; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .warnbox { background: #3a2a10; color: #ffcf8a; } }
@@ -388,39 +390,55 @@ function renderNav() {
 // ---------------------------------------------------------------- 대화창
 const now = () => performance.now();
 const hhmmss = () => new Date().toLocaleTimeString("ko-KR", { hour12: false });
-// 패드 B 누르고 말하기 — rapa1/voice_ptt.py 가 /voice/event 로 보내는 상태를 표시
+// 라파 마이크 — rapa1/voice_ptt.py 가 /voice/event 로 보내는 상태를 표시
+//   상시 듣기(listen): "N번으로 가" / "멈춰" 만 실행, 나머지는 기록 칸에 회색으로만 남김.  B 누르고 말하기는 둘 다 됨
 const PadVoice = {
-  bubble: null, t0: 0,
-  show(state, text) {
+  bubble: null, t0: 0, mode: null, moving: false, noise: 0,
+  show(state, text, banner) {
     $("padstate").className = "padstate" + (state ? " " + state : "");
     $("padstatetx").textContent = text;
-    $("padrec").hidden = !state;
+    $("padrec").hidden = !banner;
     $("padrec").className = state === "proc" ? "proc" : "";
-    $("padrectx").textContent = state === "proc" ? "알아듣는 중…" : "듣는 중… (패드 B)";
+    if (banner) $("padrectx").textContent = banner;
   },
-  idle() { this.show("", "패드 B 를 누른 채 말하세요"); },
+  idle() {
+    if (this.mode === "listen") {
+      this.show("listen", `🎙 상시 듣기 — "1번으로 가" · "멈춰"` + (this.moving ? "  (주행 중: 멈춰만)" : "") +
+                (this.noise ? `  · 소음 ${this.noise}` : ""));
+    } else this.show("", "패드 B 를 누른 채 말하세요");
+  },
+  drop() { if (this.bubble) { this.bubble.remove(); this.bubble = null; } },
   on(m) {
     const NAV = { moving: "출발", arrived: "도착 ✓", failed: "이동 실패 ✗", canceled: "취소됨" };
-    if (m.state === "recording") {
-      this.t0 = Date.now(); this.show("rec", "● 듣는 중 — 말 끝나면 B 를 떼세요");
+    if (m.state === "listening") {
+      this.mode = m.mode; this.moving = m.moving; this.noise = m.noise;
+      if (!this.bubble) this.idle();
+    } else if (m.state === "recording") {
+      this.t0 = Date.now(); this.show("rec", "● 듣는 중 — 말 끝나면 B 를 떼세요", "듣는 중… (패드 B)");
       this.bubble = Chat.add("me live", "🎮 듣는 중…");
+    } else if (m.state === "speech") {
+      this.mode = "listen"; this.show("rec", "● 말소리 감지…", "말소리 감지…");
     } else if (m.state === "processing") {
-      this.show("proc", `알아듣는 중… (${m.sec}초 녹음)`);
+      this.show("proc", `알아듣는 중… (${m.sec}초)`, "알아듣는 중…");
       if (this.bubble) Chat.set(this.bubble, "🎮 …");
     } else if (m.state === "result") {
+      const icon = m.src === "listen" ? "🎙 " : "🎮 ";
       this.idle();
+      if (m.action === "ignore") {          // 상시 듣기에서 명령 아닌 말 — 대화창엔 안 띄움
+        this.drop();
+        log(`무시: "${m.text || "(말소리 없음)"}"` + (m.why ? ` — ${m.why}` : "") + ` (${m.stt_s}초)`, "muted");
+        return;
+      }
       const b = this.bubble || Chat.add("me", ""); this.bubble = null;
-      b.classList.remove("live"); Chat.set(b, "🎮 " + (m.text || "(말소리 없음)"));
+      b.classList.remove("live"); Chat.set(b, icon + (m.text || "(말소리 없음)"));
       if (m.reply) Chat.add("bot", m.reply);
       Chat.metrics({ recog: m.stt_s });
-      log(`패드 음성: "${m.text}" → ${m.action}${m.place ? " " + m.place : ""} (${m.stt_s}초)`);
+      log(`${m.src === "listen" ? "음성" : "패드 음성"}: "${m.text}" → ${m.action}${m.place ? " " + m.place : ""} (${m.stt_s}초)`);
     } else if (m.state === "error") {
-      this.idle();
-      if (this.bubble) { this.bubble.remove(); this.bubble = null; }
-      Chat.add("sys", "⚠ " + m.error); log("패드 음성 " + m.error);
+      this.idle(); this.drop();
+      Chat.add("sys", "⚠ " + m.error); log("음성 " + m.error);
     } else if (m.state === "idle") {
-      this.idle();
-      if (this.bubble) { this.bubble.remove(); this.bubble = null; }
+      this.idle(); this.drop();
     } else if (m.state === "nav") {
       Chat.add("sys", `${m.place} ${NAV[m.nav] || m.nav}`);
     }
@@ -694,7 +712,7 @@ function sendText() {
 $("textsend").onclick = sendText; $("textin").onkeydown = (e) => { if (e.key === "Enter") sendText(); };
 document.addEventListener("keydown", (e) => { if (e.code === "Space" && e.target === document.body) { e.preventDefault(); stop("스페이스 키"); } });
 
-function log(t) { const d = document.createElement("div"); d.textContent = new Date().toLocaleTimeString("ko-KR") + "  " + t; $("log").prepend(d); }
+function log(t, cls) { const d = document.createElement("div"); if (cls) d.className = cls; d.textContent = new Date().toLocaleTimeString("ko-KR") + "  " + t; $("log").prepend(d); }
 if (!window.isSecureContext) $("securewarn").hidden = false;
 new ResizeObserver(resize).observe($("mapbox"));
 connect();

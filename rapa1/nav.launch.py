@@ -13,7 +13,8 @@ nav.launch.py  —  라파1 캡스톤 주행 한 번에 (지도 작성 이후 �
     place_manager.py     장소 저장·마커, 패드 A(버튼 0) 1초 → 현재 위치 저장
     pose_keeper.py       마지막 위치 기억 → 다음 실행 때 AMCL 초기 위치로 자동 입력
     wall_manager.py      웹에서 그린 가상 벽 → Nav2 Keepout 마스크
-    voice_ptt.py         패드 B 누르고 말하기 → 라파 마이크 → Gemini 받아쓰기 → 장소 이동 (voice:=false 면 안 띄움)
+    voice_ptt.py         라파 마이크 상시 듣기 "N번으로 가"/"멈춰" (+ 패드 B 누르고 말하기) → Gemini 받아쓰기 → 장소 이동
+                         voice_mode:=ptt 면 B 누를 때만, voice:=false 면 안 띄움
     web/server.py        조작 웹 페이지 https://<라파1 IP>:8443  (web:=false 면 안 띄움)
 
 패드(/dev/input/event*)는 input 그룹 권한이 필요하다 (jungju 는 2026-10-02 추가됨, 재로그인 후 적용).
@@ -56,7 +57,8 @@ def generate_launch_description():
 
     walls = ExecuteProcess(cmd=['python3', os.path.join(HERE, 'wall_manager.py')], output='screen')
 
-    voice = ExecuteProcess(cmd=['python3', os.path.join(HERE, 'voice_ptt.py')], output='screen',
+    voice = ExecuteProcess(cmd=['python3', os.path.join(HERE, 'voice_ptt.py'), '--ros-args',
+                                '-p', ['mode:=', LaunchConfiguration('voice_mode')]], output='screen',
                            condition=IfCondition(LaunchConfiguration('voice')))
 
     web = ExecuteProcess(cmd=['python3', os.path.join(ROOT, 'web', 'server.py')], cwd=os.path.join(ROOT, 'web'),
@@ -65,6 +67,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('web', default_value='true'),
         DeclareLaunchArgument('voice', default_value='true'),
+        DeclareLaunchArgument('voice_mode', default_value='listen'),   # listen | ptt
         DeclareLaunchArgument('map', default_value=os.path.expanduser('~/maps/lab_v2.yaml')),
         localize,
         joy,

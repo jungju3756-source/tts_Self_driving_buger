@@ -119,3 +119,37 @@ def parse_command(text, places):
     if any(h in t for h in GO_HINTS):
         return 'ask', None, '어디로 갈까요? ' + (', '.join(places) + ' 중에서 말해 주세요.' if places else '')
     return 'unknown', None, '잘 못 알아들었어요. 장소 이름을 말해 주세요.'
+
+
+# ---------------------------------------------------------------- 상시 듣기용 (rapa1/voice_ptt.py mode:=listen)
+# 마이크가 계속 켜져 있으므로 "N번 + 이동 동사" 가 바로 붙어 있을 때만 이동한다. 나머지는 전부 무시.
+# 동사 → 바로 뒤에 올 수 있는 말 ('' = 문장 끝). '1번 가방' '1번 가지 마' 같은 건 여기서 걸러진다.
+STRICT_VERBS = {
+    '가': ('', '줘', '주', '자', '라', '요', '봐', '줄래', '세요', '.', '!', '?'),
+    '이동': ('', '해', '하', '시', '좀', '.', '!', '?'),
+    '출발': ('', '해', '하', '시', '.', '!', '?'),
+    '데려': None,               # None = 뒤에 뭐가 와도 됨
+    '안내': ('', '해', '하', '좀', '.', '!', '?'),
+}
+_STRICT_RE = re.compile(r'(\d+)번(?:째)?(?:자리|위치|장소)?(?:으로|로|에|까지|쪽으로|쪽)?(' +
+                        '|'.join(sorted(STRICT_VERBS, key=len, reverse=True)) + ')')
+
+
+def parse_strict(text, places):
+    """상시 듣기 해석 → (action, place, reply).  action: 'stop' | 'go' | 'ignore'
+    '1번으로 가' '3번 이동해' '이 번으로 가줘' → go,  '멈춰' → stop,  그 외 ('1번 어디야' '가자' 잡담) → ignore
+    """
+    if is_stop(text):
+        return 'stop', None, '멈출게요.'
+    t = norm(_ko_numbers(text))
+    hits = set()
+    for m in _STRICT_RE.finditer(t):
+        allowed, rest = STRICT_VERBS[m.group(2)], t[m.end():]
+        if allowed is None or rest == '' or any(a and rest.startswith(a) for a in allowed):
+            hits.add(f'{int(m.group(1))}번')
+    if len(hits) != 1:            # 없거나 '1번 말고 2번 가' 처럼 둘 이상이면 추측하지 않는다
+        return 'ignore', None, None
+    place = resolve_place(hits.pop(), places)
+    if place is None:
+        return 'ignore', None, None
+    return 'go', place, f'{place}(으)로 갈게요.'

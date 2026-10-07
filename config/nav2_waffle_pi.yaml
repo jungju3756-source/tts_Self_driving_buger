@@ -1,6 +1,7 @@
 # 라파1 Nav2 설정 — turtlebot3_navigation2/param/waffle_pi.yaml 복사본 (2026-10-02)
 # 바꾼 것: robot_radius 0.15→0.22 (Waffle Pi 281x306mm 외접원), max_vel_x 0.3→0.26 (실제 최고속도),
-#         xy_goal_tolerance 0.25→0.12 (RFP 도달 오차 ±0.25m 를 여유 있게 맞추려고)
+#         xy_goal_tolerance 0.25→0.12→0.20, yaw_goal_tolerance 0.25→3.14 (2026-10-07: 도착 지점에서 방향 맞추려고
+#         계속 돌던 것 — 대략 그 위치에 오면 멈춤, 방향은 안 봄. RFP 도달 오차 ±0.25m 안쪽)
 #         local/global costmap 에 keepout_filter (가상 벽)
 amcl:
   ros__parameters:
@@ -119,8 +120,8 @@ controller_server:
     goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.12
-      yaw_goal_tolerance: 0.25
+      xy_goal_tolerance: 0.20
+      yaw_goal_tolerance: 3.14
     FollowPath:
       plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: true
@@ -147,7 +148,7 @@ controller_server:
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.5
-      xy_goal_tolerance: 0.05
+      xy_goal_tolerance: 0.20
       trans_stopped_velocity: 0.25
       short_circuit_trajectory_evaluation: true
       stateful: true
