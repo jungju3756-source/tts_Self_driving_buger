@@ -1,6 +1,6 @@
 # 라파1 Nav2 설정 — turtlebot3_navigation2/param/waffle_pi.yaml 복사본 (2026-10-02)
 # 바꾼 것: robot_radius 0.15→0.22 (Waffle Pi 281x306mm 외접원), max_vel_x 0.3→0.26 (실제 최고속도),
-#         xy_goal_tolerance 0.25→0.12→0.20, yaw_goal_tolerance 0.25→3.14 (2026-10-07: 도착 지점에서 방향 맞추려고
+#         xy_goal_tolerance 0.25→0.12→0.20→0.15, yaw_goal_tolerance 0.25→3.14 (2026-10-07: 도착 지점에서 방향 맞추려고
 #         계속 돌던 것 — 대략 그 위치에 오면 멈춤, 방향은 안 봄. RFP 도달 오차 ±0.25m 안쪽)
 #         local/global costmap 에 keepout_filter (가상 벽)
 amcl:
@@ -54,6 +54,7 @@ amcl:
 
 bt_navigator:
   ros__parameters:
+    default_server_timeout: 200   # ms. 기본 20 — Pi 가 바쁘면 planner 응답이 늦어 바로 '목표 실패' (2026-10-07)
     global_frame: map
     robot_base_frame: base_link
     transform_tolerance: 0.5
@@ -120,10 +121,19 @@ controller_server:
     goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.20
+      xy_goal_tolerance: 0.15
       yaw_goal_tolerance: 3.14
     FollowPath:
-      plugin: "dwb_core::DWBLocalPlanner"
+      # RotationShim: 경로 방향과 45° 넘게 어긋나면 먼저 제자리 회전 후 DWB 에 넘김 (2026-10-07)
+      # 2번(벽 쪽을 보고 도착)에서 경로가 등 뒤로 나면 DWB 가 좌/우 점수가 같아 (0, ±0.03) 으로 28초씩 떨던 문제
+      plugin: "nav2_rotation_shim_controller::RotationShimController"
+      primary_controller: "dwb_core::DWBLocalPlanner"
+      angular_dist_threshold: 0.785
+      forward_sampling_distance: 0.5
+      rotate_to_heading_angular_vel: 1.0
+      max_angular_accel: 3.2
+      simulate_ahead_time: 1.0
+      rotate_to_goal_heading: false
       debug_trajectory_details: true
       min_vel_x: 0.0
       min_vel_y: 0.0
@@ -148,7 +158,7 @@ controller_server:
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.5
-      xy_goal_tolerance: 0.20
+      xy_goal_tolerance: 0.15
       trans_stopped_velocity: 0.25
       short_circuit_trajectory_evaluation: true
       stateful: true

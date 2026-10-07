@@ -24,6 +24,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
 OPENCR = '/dev/serial/by-id/usb-ROBOTIS_OpenCR_Virtual_ComPort_in_FS_Mode_FFFFFFFEFFFF-if00'
@@ -40,13 +41,20 @@ def generate_launch_description():
             get_package_share_directory('turtlebot3_bringup'), 'launch', 'robot.launch.py')),
         launch_arguments={'usb_port': usb_port}.items())
 
+    # Nav2 노드를 프로세스 하나(nav2_container)에 묶는다 — 노드 10여 개가 따로 돌면 각 8~18 % CPU 를 먹어서
+    # BT 가 서버 응답을 못 받고 실패했다 (2026-10-07). composition:=False 면 예전처럼 따로 띄움
+    container = Node(package='rclcpp_components', executable='component_container_isolated', name='nav2_container',
+                     parameters=[NAV2_PARAMS, {'autostart': True}], output='screen',
+                     condition=IfCondition(LaunchConfiguration('composition')))
+
     localization = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(
             get_package_share_directory('nav2_bringup'), 'launch', 'localization_launch.py')),
         launch_arguments={
             'map': map_yaml,
             'params_file': NAV2_PARAMS,
-            'use_composition': 'False',
+            'use_composition': LaunchConfiguration('composition'),
+            'container_name': 'nav2_container',
             'autostart': 'True',
         }.items())
 
@@ -56,16 +64,19 @@ def generate_launch_description():
             get_package_share_directory('nav2_bringup'), 'launch', 'navigation_launch.py')),
         launch_arguments={
             'params_file': NAV2_PARAMS,
-            'use_composition': 'False',
+            'use_composition': LaunchConfiguration('composition'),
+            'container_name': 'nav2_container',
             'autostart': 'True',
         }.items(),
         condition=IfCondition(LaunchConfiguration('nav')))
 
     return LaunchDescription([
         DeclareLaunchArgument('nav', default_value='true'),
+        DeclareLaunchArgument('composition', default_value='True'),   # True | False (대문자 — nav2 가 파이썬 식으로 씀)
         DeclareLaunchArgument('usb_port', default_value=OPENCR),
         DeclareLaunchArgument('map', default_value=os.path.expanduser('~/maps/lab_v2.yaml')),
         bringup,
+        container,
         localization,
         navigation,
     ])
